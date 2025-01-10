@@ -1,0 +1,111 @@
+---
+title: "assignment_2"
+author: "Mads Munch Mikkelsen"
+date: "2025-01-10"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pacman)
+p_load(dslabs, ggplot2, car, dplyr)
+```
+
+Part 1.
+Load the 'divorce_margarine' dataset from the 'dslabs' package. Investigate the correlation between margarine consumption and divorce rates in Maine. Would an increase in the preference for margarine lead to skyrocketing divorce rates?
+
+```{r}
+div_marg <- divorce_margarine
+
+ggplot(div_marg, aes(x = margarine_consumption_per_capita, y = divorce_rate_maine)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "blue") +
+  labs(
+    title = "Divorce Rates vs Margarine Consumption",
+    x = "Margarine Consumption (lbs/year)",
+    y = "Divorce Rate (per 1000)"
+  )
+
+cor(divorce_margarine$margarine_consumption, divorce_margarine$divorce_rate)
+```
+This is a classic example to illustrate the difference between causation and correlation. While the divorce rate in maine and the margarine consumption might be correlated, there is nothing indicating causation. When you look at enough different meassurues looking for a correlation, you will inevitably find one.
+
+# Part 2.
+Load the ‘GSSvocab’ dataset from the ‘car’ package. This dataset contains people’s scores on an English vocabulary test and includes demographic information.
+
+Filter for the year 1978 and remove rows with missing values (the function na.exclude() is one way to do this – check out the documentation!).
+
+Is a person’s score on the vocabulary test (‘vocab’) significantly impacted by their level of education (‘educ’)? Visualize the relationship in a plot and build a model. Briefly explain the results.
+
+
+```{r}
+GSSvocab <- GSSvocab
+
+gss_filtered <- GSSvocab %>%
+  filter(year == 1978) %>%
+  na.exclude()
+
+ggplot(gss_filtered, aes(x = educ, y = vocab)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", color = "blue") +
+  labs(
+    title = "Vocabulary Scores vs. Education Level",
+    x = "Education (Years)",
+    y = "Vocabulary Score"
+  )
+
+model1 <- lm(vocab ~ educ, data = gss_filtered)
+summary(model1)
+```
+
+Whether a person is the native of an English-speaking country (‘nativeBorn’) could potentially have an impact on the size of their vocabulary. Visualize the relationship and add the predictor to the model. Briefly explain the results.
+
+
+
+
+
+```{r}
+ggplot(gss_filtered, aes(x = nativeBorn, y = vocab)) +
+  geom_boxplot(fill = "lightblue") +
+  labs(
+    title = "Vocabulary Scores by Native Born Status",
+    x = "Native Born Status",
+    y = "Vocabulary Score"
+  )
+
+model2 <- lm(vocab ~ educ + nativeBorn, data = gss_filtered)
+summary(model2)
+```
+Does a person’s level of education depend on whether they are a native of the country? Visualize the relationship. Do you think it makes sense to add the relationship as an interaction term? Try creating the model and briefly explain the results.
+
+Which model performs best?
+
+When creating plots, try to play around with the options of ggplot2 – add titles and axis labels, and consider using colours.
+
+
+```{r}
+ggplot(gss_filtered, aes(x = nativeBorn, y = educ)) +
+  geom_boxplot(fill = "lightgreen") +
+  labs(
+    title = "Education by Native Born Status",
+    x = "Native Born Status",
+    y = "Education (Years)"
+  )
+
+model3 <- lm(vocab ~ educ * nativeBorn, data = gss_filtered)
+summary(model3)
+
+```
+```{r}
+AIC(model1, model2, model3)
+BIC(model1, model2, model3)
+
+# Summary of the best model
+summary(model2)
+```
+
+
+
+
