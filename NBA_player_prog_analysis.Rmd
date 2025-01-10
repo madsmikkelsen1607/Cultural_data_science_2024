@@ -1,0 +1,263 @@
+---
+title: "NBA Player Progression"
+author: "Mads Munch Mikkelsen"
+date: "2024-12-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(pacman)
+p_load(tidyverse, skimr, dplyr, ggplot2, segmented, broom.mixed, brms, tidyvers, rstan, cmdstanr)
+```
+
+```{r}
+getwd()
+```
+
+All data for this project can be found in this kaggle dataset for NBA Data: https://www.kaggle.com/datasets/wyattowalsh/basketball/data
+
+```{r}
+
+
+nba_data <- read.csv("nba_stats/Seasons_Stats.csv")
+nba_players <- read.csv("nba_stats/player_data.csv")
+
+```
+
+```{r}
+summary(nba_data)
+head(nba_data)
+```
+
+
+```{r}
+nba_cleaned <- nba_data %>%
+  filter(!is.na(PTS) & !is.na(AST) & !is.na(TRB)) %>%
+  filter(MP > 0) %>%  # Filter out rows with no minutes played to avoid division by zero
+  mutate(
+    PTS_per_36 = (PTS / MP) * 36,
+    AST_per_36 = (AST / MP) * 36,
+    REB_per_36 = (TRB / MP) * 36
+  )
+
+```
+
+
+
+```{r}
+nba_summary <- nba_cleaned %>%
+  group_by(Age) %>%
+  summarise(
+    Avg_PTS_per_36 = mean(PTS_per_36, na.rm = TRUE),
+    Avg_AST_per_36 = mean(AST_per_36, na.rm = TRUE),
+    Avg_REB_per_36 = mean(REB_per_36, na.rm = TRUE)
+  )
+```
+
+```{r}
+ggplot(nba_summary, aes(x = Age)) +
+  geom_line(aes(y = Avg_PTS_per_36, color = "Points")) +
+  geom_line(aes(y = Avg_AST_per_36, color = "Assists")) +
+  geom_line(aes(y = Avg_REB_per_36, color = "Rebounds")) +
+  labs(
+    title = "NBA Stats per 36 Minutes by Age",
+    x = "Age",
+    y = "Per 36 Stats"
+  ) +
+  scale_color_manual(values = c("Points" = "blue", "Assists" = "red", "Rebounds" = "green"))
+```
+
+
+```{r}
+# Add a decade column
+nba_cleaned_ext <- nba_cleaned %>%
+  mutate(Decade = paste0(substr(Year, 1, 3), "0s"))
+
+# Group by age and decade
+nba_decades_summary <- nba_cleaned_ext %>%
+  group_by(Age, Decade) %>%
+  summarise(
+    Avg_PTS_per_36 = mean(PTS_per_36, na.rm = TRUE),
+    Avg_AST_per_36 = mean(AST_per_36, na.rm = TRUE),
+    Avg_REB_per_36 = mean(REB_per_36, na.rm = TRUE)
+  )
+
+# Plot trends by decade
+ggplot(nba_decades_summary, aes(x = Age, y = Avg_PTS_per_36, color = Decade)) +
+  geom_line() +
+  labs(
+    title = "Points per 36 Minutes by Age Across Decades",
+    x = "Age",
+    y = "Points per 36 Minutes"
+  )
+```
+
+```{r}
+lm_model <- lm(PTS_per_36 ~ Age, data = nba_cleaned_ext)
+summary(lm_model)
+
+```
+
+```{r}
+
+# Breakpoint analysis
+seg_model <- segmented(lm_model, seg.Z = ~Age)
+summary(seg_model)
+plot(seg_model)
+```
+
+```{r}
+# Filter dataset to include only players aged 38 or younger
+nba_filtered <- nba_cleaned_ext %>%
+  filter(Age <= 38)
+```
+
+```{r}
+nba_decades_summary_filtered <- nba_filtered %>%
+  group_by(Age, Decade) %>%
+  summarise(
+    Avg_PTS_per_36 = mean(PTS_per_36, na.rm = TRUE),
+    Avg_AST_per_36 = mean(AST_per_36, na.rm = TRUE),
+    Avg_REB_per_36 = mean(REB_per_36, na.rm = TRUE)
+  )
+
+```
+```{r}
+ggplot(nba_decades_summary_filtered, aes(x = Age)) +
+  geom_line(aes(y = Avg_PTS_per_36, color = "Points")) +
+  geom_line(aes(y = Avg_AST_per_36, color = "Assists")) +
+  geom_line(aes(y = Avg_REB_per_36, color = "Rebounds")) +
+  labs(
+    title = "NBA Stats per 36 Minutes by Age (Up to 38 Years)",
+    x = "Age",
+    y = "Per 36 Stats"
+  ) +
+  scale_color_manual(values = c("Points" = "blue", "Assists" = "red", "Rebounds" = "green"))
+```
+
+```{r}
+ggplot(nba_decades_summary_filtered %>% filter(Age <= 38), aes(x = Age, y = Avg_PTS_per_36, color = Decade)) +
+  geom_line() +
+  labs(
+    title = "Points per 36 Minutes by Age Across Decades (Up to 38 Years)",
+    x = "Age",
+    y = "Points per 36 Minutes"
+  )
+```
+
+```{r}
+lm_model_2 <- lm(PTS_per_36 ~ Age, data = nba_filtered %>% filter(Age <= 38))
+summary(lm_model_2)
+```
+
+##Non-Linear approach
+
+```{r}
+lm_quadratic <- lm(PTS_per_36 ~ Age + I(Age^2), data = nba_filtered %>% filter(Age <= 38))
+summary(lm_quadratic)
+```
+
+```{r}
+coeffs <- coef(lm_quadratic)
+peak_age <- -coeffs["Age"] / (2 * coeffs["I(Age^2)"])
+print(peak_age)
+```
+
+
+
+
+
+```{r}
+ggplot(nba_filtered %>% filter(Age <= 38), aes(x = Age, y = PTS_per_36)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", color = "blue") +
+  labs(title = "Nonlinear Effect of Age on PTS_per_36", x = "Age", y = "PTS per 36 Minutes")
+
+```
+
+```{r}
+nba_filtered_erasplit <- nba_filtered %>%
+  mutate(Era = ifelse(Year < 2000, "Pre-2000", "Post-2000"))
+```
+
+```{r}
+# Pre-2000 model
+pre_2000_model <- lm(PTS_per_36 ~ Age + I(Age^2), data = nba_filtered_erasplit %>% filter(Era == "Pre-2000"))
+
+# Post-2000 model
+post_2000_model <- lm(PTS_per_36 ~ Age + I(Age^2), data = nba_filtered_erasplit %>% filter(Era == "Post-2000"))
+
+summary(pre_2000_model)
+summary(post_2000_model)
+
+```
+
+```{r}
+# Calculate peak age for Pre-2000
+pre_2000_coeffs <- coef(pre_2000_model)
+pre_2000_peak_age <- -pre_2000_coeffs["Age"] / (2 * pre_2000_coeffs["I(Age^2)"])
+
+# Calculate peak age for Post-2000
+post_2000_coeffs <- coef(post_2000_model)
+post_2000_peak_age <- -post_2000_coeffs["Age"] / (2 * post_2000_coeffs["I(Age^2)"])
+
+print(pre_2000_peak_age)
+print(post_2000_peak_age)
+```
+
+
+
+```{r}
+combined_model <- lm(PTS_per_36 ~ Age * Era + I(Age^2) * Era, data = nba_filtered_erasplit)
+summary(combined_model)
+```
+
+```{r}
+nba_hierarchical <- nba_filtered %>%
+  group_by(Player) %>%
+  filter(n() > 5) %>%
+  ungroup()
+```
+
+```{r}
+hierarchical_model <- brm(
+  PTS_per_36 ~ Age + I(Age^2) + (1 + Age + I(Age^2) | Player),
+  data = nba_hierarchical,
+  family = gaussian(),
+  chains = 4,
+  cores = 4,
+  iter = 2000
+)
+```
+
+Technical issues regarding the Stan program made it so this code currently doesn't run fully, but too properly asses the research question, this would a better procedure than the current methods employed.
+
+```{r}
+predictions <- nba_hierarchical %>%
+  group_by(Player) %>%
+  mutate(predicted_PTS = fitted(hierarchical_model)[, "Estimate"])
+
+# Plot player-specific trajectories
+ggplot(predictions, aes(x = Age, y = predicted_PTS, color = Player)) +
+  geom_line() +
+  theme(legend.position = "none") +
+  labs(
+    title = "Player-Specific Trajectories (Predicted PTS per 36 Minutes)",
+    x = "Age",
+    y = "Predicted PTS per 36 Minutes"
+  )
+
+plot(hierarchical_model, ask = FALSE)
+
+
+```
+
+```{r}
+# Convergence diagnostics
+plot(hierarchical_model, ask = FALSE)
+
+# Posterior predictive checks
+pp_check(hierarchical_model)
+```
+
